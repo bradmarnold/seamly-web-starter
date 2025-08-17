@@ -6,25 +6,13 @@ import { useDraftStore } from '@/lib/store';
 import { DraftingCanvas, type ToolMode } from '@/components/DraftingCanvas';
 import { TutorialPanel } from '@/components/TutorialPanel';
 import NewBlockModal from '@/components/NewBlockModal';
+import PointLADialog from '@/components/PointLADialog';
 import PointOnLineDialog from '@/components/PointOnLineDialog';
 import PerpFootDialog from '@/components/PerpFootDialog';
 import ArcCSEDialog from '@/components/ArcCSEDialog';
 import IntersectionDialog from '@/components/IntersectionDialog';
 import MeasurementsPanel from '@/components/MeasurementsPanel';
 import PointEditDialog from '@/components/PointEditDialog';
-import PointLADialog from '@/components/PointLADialog';
-
-// Phase D dialogs
-import ParallelThroughDialog from '@/components/ParallelThroughDialog';
-import PerpThroughDialog from '@/components/PerpThroughDialog';
-import FromLineAngleDialog from '@/components/FromLineAngleDialog';
-import MidpointDialog from '@/components/MidpointDialog';
-import DivideSegmentDialog from '@/components/DivideSegmentDialog';
-import LineArcIntersectDialog from '@/components/LineArcIntersectDialog';
-import ArcArcIntersectDialog from '@/components/ArcArcIntersectDialog';
-import SplineDialog from '@/components/SplineDialog';
-
-import Toolbox from '@/components/Toolbox';
 
 export default function DraftPage() {
   const sp = useSearchParams();
@@ -33,14 +21,11 @@ export default function DraftPage() {
   const [showTutorial, setShowTutorial] = useState(Boolean(tutorial));
   const reset = useDraftStore(s => s.reset);
 
-  // Theme (light default)
-  const [theme, setTheme] = useState<'light'|'dark'>('light');
-  useEffect(()=>{ document.documentElement.dataset.theme = theme; }, [theme]);
-
   const [mode, setMode] = useState<ToolMode>('pan');
   const [zoomVersion, setZoomVersion] = useState(0);
   const [zoomDir, setZoomDir] = useState(1);
   const [showNewBlock, setShowNewBlock] = useState(false);
+  const [showPointLA, setShowPointLA] = useState(false);
   const [showPOL, setShowPOL] = useState(false);
   const [showPerp, setShowPerp] = useState(false);
   const [showArcCSE, setShowArcCSE] = useState(false);
@@ -48,28 +33,13 @@ export default function DraftPage() {
   const [editId, setEditId] = useState<number|null>(null);
   const currentBlockId = useDraftStore(s=>s.currentBlockId);
 
-  // Phase D modal state
-  const [showPar, setShowPar] = useState(false);
-  const [showPerpThrough, setShowPerpThrough] = useState(false);
-  const [showFLA, setShowFLA] = useState(false);
-  const [showMid, setShowMid] = useState(false);
-  const [showDiv, setShowDiv] = useState(false);
-  const [showLxA, setShowLxA] = useState(false);
-  const [showAxA, setShowAxA] = useState(false);
-  const [showSpline, setShowSpline] = useState(false);
-
-  // Point L&A dialog after rubber-band preview
-  const [showLA, setShowLA] = useState(false);
-  const [laBase, setLaBase] = useState<number|undefined>(undefined);
-  const [laLen, setLaLen] = useState(5);
-  const [laAng, setLaAng] = useState(0);
-
-  // file ops
   const dumpJSON = useDraftStore(s=>s.dumpJSON);
   const loadJSON = useDraftStore(s=>s.loadJSON);
   const fileRef = useRef<HTMLInputElement|null>(null);
 
   useEffect(() => { reset(); }, [reset]);
+
+  const zoom = (dir: number) => { setZoomDir(dir); setZoomVersion(v => v + 1); };
 
   const saveJSON = () => {
     const data = dumpJSON();
@@ -106,7 +76,7 @@ export default function DraftPage() {
       if (s.kind==='line') {
         const a = pts.find(p=>p.id===s.a)!; const b = pts.find(p=>p.id===s.b)!;
         return `<line x1="${toX(a.x)}" y1="${toY(a.y)}" x2="${toX(b.x)}" y2="${toY(b.y)}" stroke="black" stroke-width="1"/>`;
-      } else if (s.kind==='arc') {
+      } else {
         const c = pts.find(p=>p.id===s.center)!;
         const a = pts.find(p=>p.id===s.start)!;
         const b = pts.find(p=>p.id===s.end)!;
@@ -117,11 +87,6 @@ export default function DraftPage() {
         const large = Math.abs(delta) > Math.PI ? 1 : 0;
         const sweep = s.ccw ? 1 : 0;
         return `<path d="M ${toX(a.x)} ${toY(a.y)} A ${r} ${r} 0 ${large} ${sweep} ${toX(b.x)} ${toY(b.y)}" fill="none" stroke="black" stroke-width="1"/>`;
-      } else {
-        const ids = s.anchors as number[];
-        const p = (id:number)=> pts.find(pp=>pp.id===id)!;
-        const S = ids.map(p).map(q=>`${toX(q.x)},${toY(q.y)}`).join(' ');
-        return `<polyline points="${S}" fill="none" stroke="black" stroke-width="1"/>`;
       }
     }).join('');
 
@@ -142,55 +107,49 @@ export default function DraftPage() {
   };
 
   return (
-    <main className="container" style={{padding:'8px'}}>
-      {/* top bar */}
-      <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
-        <button onClick={() => setShowNewBlock(true)}>New block</button>
-        <button onClick={() => setShowTutorial(s => !s)}>{showTutorial ? 'Hide tutorial' : 'Show tutorial'}</button>
+    <main className="container">
+      <div className="grid">
+        <div className="canvasWrap" style={{position:'relative'}}>
+          <div className="toolbar" style={{zIndex:5}} onClick={(e)=>e.stopPropagation()}>
+            <button onClick={() => setShowNewBlock(true)}>New block</button>
+            <span className="badge">{currentBlockId ? 'Block active' : 'No block'}</span>
+            <button onClick={() => setShowTutorial(s => !s)}>{showTutorial ? 'Hide tutorial' : 'Show tutorial'}</button>
 
-        <div style={{marginLeft:'auto', display:'flex', gap:8}}>
-          <button onClick={()=> setTheme(t=> t==='light'?'dark':'light')}>{theme==='light'?'Dark':'Light'} mode</button>
-          <button onClick={() => { setZoomDir(1); setZoomVersion(v=>v+1); }}>Zoom in</button>
-          <button onClick={() => { setZoomDir(-1); setZoomVersion(v=>v+1); }}>Zoom out</button>
-          <button onClick={saveJSON}>Save</button>
-          <button onClick={() => fileRef.current?.click()}>Load</button>
-          <button onClick={exportSVG}>Export SVG</button>
-          <input ref={fileRef} type="file" accept="application/json" style={{display:'none'}}
-                 onChange={e=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); e.currentTarget.value=''; }} />
-        </div>
-      </div>
+            <span className="badge">Construct</span>
+            <button onClick={() => setShowPointLA(true)} disabled={!currentBlockId}>Point L∠</button>
+            <button onClick={() => setShowPOL(true)} disabled={!currentBlockId}>Point on line</button>
+            <button onClick={() => setShowPerp(true)} disabled={!currentBlockId}>Perpendicular foot</button>
+            <button onClick={() => setShowIntersect(true)} disabled={!currentBlockId}>Intersection</button>
 
-      {/* layout: toolbox | canvas | right panel */}
-      <div style={{display:'grid', gridTemplateColumns:'260px 1fr 320px', gap:12, minHeight:'calc(100vh - 90px)'}}>
-        <Toolbox
-          openPOL={()=>setShowPOL(true)}
-          openPerpFoot={()=>setShowPerp(true)}
-          openPar={()=>setShowPar(true)}
-          openPerpThrough={()=>setShowPerpThrough(true)}
-          openFLA={()=>setShowFLA(true)}
-          openMid={()=>setShowMid(true)}
-          openDiv={()=>setShowDiv(true)}
-          openArcCSE={()=>setShowArcCSE(true)}
-          openLxA={()=>setShowLxA(true)}
-          openAxA={()=>setShowAxA(true)}
-          openSpline={()=>setShowSpline(true)}
-          mode={mode}
-          setMode={setMode}
-        />
+            <span className="badge">Curves</span>
+            <button onClick={() => setShowArcCSE(true)} disabled={!currentBlockId}>Arc C–S–E</button>
 
-        <div className="canvasWrap" style={{position:'relative', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden'}}>
+            <span className="badge">Edit</span>
+            <button onClick={() => setMode('lineBetween')} disabled={!currentBlockId}>Line</button>
+            <button onClick={() => setMode('move')} disabled={!currentBlockId}>Move</button>
+            <button onClick={() => setMode('pan')}>Pan</button>
+
+            <span className="badge">View</span>
+            <button onClick={() => zoom(1)}>Zoom in</button>
+            <button onClick={() => zoom(-1)}>Zoom out</button>
+
+            <span className="badge">File</span>
+            <button onClick={saveJSON}>Save</button>
+            <button onClick={() => fileRef.current?.click()}>Load</button>
+            <button onClick={exportSVG}>Export SVG</button>
+            <input ref={fileRef} type="file" accept="application/json" style={{display:'none'}}
+                   onChange={e=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); e.currentTarget.value=''; }} />
+          </div>
+
           <DraftingCanvas
             mode={mode}
             zoomSignal={{version: zoomVersion, dir: zoomDir}}
             onRequestEdit={(id)=> setEditId(id)}
-            onPointLARequest={({baseId, len, ang})=>{
-              setLaBase(baseId); setLaLen(len); setLaAng(ang); setShowLA(true);
-            }}
           />
         </div>
 
-        <div className="panel" style={{padding:12}}>
-          <h2 style={{marginTop:6}}>Tutorials</h2>
+        <div className="panel">
+          <h2>Tutorials</h2>
           <div className="body">
             <select
               defaultValue={tutorial?.id ?? ''}
@@ -199,7 +158,7 @@ export default function DraftPage() {
                 const t = id ? getTutorialById(id) : null;
                 if (t) { location.href = `/draft?t=${t.id}`; }
               }}
-              style={{ width: '100%', padding: 8 }}
+              style={{ width: '100%', padding: 8, background:'#0b0c0f', color:'white', border:'1px solid #1f2330', borderRadius:8 }}
             >
               <option value="">Pick a tutorial</option>
               {TUTORIALS.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
@@ -207,33 +166,20 @@ export default function DraftPage() {
             {showTutorial && tutorial ? (
               <TutorialPanel tutorial={tutorial} />
             ) : (
-              <p style={{color:'var(--muted)'}}>Select a tutorial to see steps here.</p>
+              <p style={{color:'#a1a1aa'}}>Select a tutorial to see steps here.</p>
             )}
             <MeasurementsPanel />
           </div>
         </div>
       </div>
 
-      {/* dialogs */}
       <NewBlockModal open={showNewBlock} onClose={()=>setShowNewBlock(false)} />
+      <PointLADialog open={showPointLA} onClose={()=>setShowPointLA(false)} />
       <PointOnLineDialog open={showPOL} onClose={()=>setShowPOL(false)} />
       <PerpFootDialog open={showPerp} onClose={()=>setShowPerp(false)} />
       <ArcCSEDialog open={showArcCSE} onClose={()=>setShowArcCSE(false)} />
       <IntersectionDialog open={showIntersect} onClose={()=>setShowIntersect(false)} />
       <PointEditDialog open={editId!==null} pointId={editId ?? undefined} onClose={()=>setEditId(null)} />
-
-      {/* Phase D modal dialogs */}
-      <ParallelThroughDialog open={showPar} onClose={()=>setShowPar(false)} />
-      <PerpThroughDialog open={showPerpThrough} onClose={()=>setShowPerpThrough(false)} />
-      <FromLineAngleDialog open={showFLA} onClose={()=>setShowFLA(false)} />
-      <MidpointDialog open={showMid} onClose={()=>setShowMid(false)} />
-      <DivideSegmentDialog open={showDiv} onClose={()=>setShowDiv(false)} />
-      <LineArcIntersectDialog open={showLxA} onClose={()=>setShowLxA(false)} />
-      <ArcArcIntersectDialog open={showAxA} onClose={()=>setShowAxA(false)} />
-      <SplineDialog open={showSpline} onClose={()=>setShowSpline(false)} />
-
-      {/* Point L&A after rubber-band preview */}
-      <PointLADialog open={showLA} onClose={()=>setShowLA(false)} baseId={laBase} defaultLen={laLen} defaultAng={laAng} />
     </main>
   );
 }

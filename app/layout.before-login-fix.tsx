@@ -1,7 +1,6 @@
 import './globals.css';
 import Link from 'next/link';
 import { TUTORIALS } from '@/lib/tutorials';
-import LoginButton from '@/components/LoginButton';
 
 export const metadata = { title: 'Seamly Web Starter', description: 'Parametric drafting tutorials in the browser' };
 
@@ -35,4 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </body>
     </html>
   );
+}
+
+function LoginButton() {
+  const onClick = () => alert('Auth placeholder. Wire to GitHub or email later.');
+  return <button onClick={onClick}>Sign in</button>;
 }

@@ -3,38 +3,36 @@ import create from 'zustand';
 
 export type Point = { id:number; name:string; x:number; y:number };
 export type SegLine = { id:number; kind:'line'; a:number; b:number };
-export type SegArc =  { id:number; kind:'arc'; center:number; start:number; end:number; ccw:boolean };
-export type SegPath = { id:number; kind:'path'; anchors:number[]; closed?:boolean; spline?:boolean; tension?:number };
+export type SegArc = { id:number; kind:'arc'; center:number; start:number; end:number; ccw:boolean };
+export type SegPath = { id:number; kind:'path'; anchors:number[]; closed?:boolean };
 export type Segment = SegLine | SegArc | SegPath;
 export type LegacyLine = { a:number; b:number };
 
 export type DraftState = {
   points: Point[];
   segs: Segment[];
-  lines: LegacyLine[];
+  lines: LegacyLine[]; // faint helper lines
   currentBlockId: string | null;
+
+  // id counters
   _pid: number;
   _sid: number;
 
   reset: () => void;
-
   addPoint: (name:string, x:number, y:number) => number;
   updatePoint: (id:number, p:{x:number;y:number}) => void;
 
   addLineBetween: (a:number, b:number) => void;
 
-  // point tools
-  addPointLA: (baseId:number, name:string, len:number, angDeg:number) => number;
-  addPointOnLine: (a:number, b:number, name:string, dist:number) => number;
-  addPerpFoot: (pId:number, a:number, b:number, name:string) => number;
-  addPointFromLineAngle: (base:number, refA:number, refB:number, name:string, len:number, offsetDeg:number) => number;
-  addMidpoint: (a:number, b:number, name:string) => number;
-  addDivideSegment: (a:number, b:number, k:number, n:number, name:string) => number;
+  addPointLA: (baseId:number, name:string, len:number, angDeg:number) => number; // Point: Length & Angle
+  addPointOnLine: (a:number, b:number, name:string, dist:number) => number;     // Point: Along Line (from A toward B by dist)
+  addPerpFoot: (pId:number, a:number, b:number, name:string) => number;         // Perpendicular foot of P onto AB
+  addPointFromLineAngle: (base:number, refA:number, refB:number, name:string, len:number, offsetDeg:number) => number; // from AB direction
 
-  // paths
-  addSpline: (anchors:number[], closed?:boolean, tension?:number) => number;
-  updatePathAnchors: (pathId:number, anchors:number[]) => void;
-  insertPathAnchor: (pathId:number, index:number, pointId:number) => void;
+  addMidpoint: (a:number, b:number, name:string) => number;                      // midpoint of AB
+  addDivideSegment: (a:number, b:number, k:number, n:number, name:string) => number; // k/n along AB from A
+
+  addSpline: (anchors:number[], closed?:boolean) => number;
 
   dumpJSON: () => any;
   loadJSON: (obj:any) => void;
@@ -97,7 +95,7 @@ export const useDraftStore = create<DraftState>((set, get) => ({
     const B = get().points.find(p=>p.id===b)!;
     const vx = B.x - A.x, vy = B.y - A.y;
     const L2 = vx*vx + vy*vy || 1e-9;
-    const t = ((P.x - A.x)*vx + (P.y - A.y)*vy) / L2;
+    const t = ((P.x - A.x)*vx + (P.y - A.y)*vy) / L2; // projection scalar (unclamped)
     const x = A.x + t*vx, y = A.y + t*vy;
     return get().addPoint(name, x, y);
   },
@@ -129,24 +127,11 @@ export const useDraftStore = create<DraftState>((set, get) => ({
     return get().addPoint(name, x, y);
   },
 
-  addSpline: (anchors, closed=false, tension=0.5) => {
+  addSpline: (anchors, closed=false) => {
     const id = get()._sid;
-    set(s => ({ segs: [...s.segs, { id, kind:'path', anchors, closed, spline:true, tension } as SegPath], _sid: s._sid+1 }));
+    set(s => ({ segs: [...s.segs, { id, kind:'path', anchors, closed } as SegPath], _sid: s._sid+1 }));
     return id;
   },
-
-  updatePathAnchors: (pathId, anchors) => set(s => ({
-    segs: s.segs.map(seg => (seg.kind==='path' && seg.id===pathId) ? ({ ...seg, anchors:[...anchors] }) : seg)
-  })),
-
-  insertPathAnchor: (pathId, index, pointId) => set(s => ({
-    segs: s.segs.map(seg => {
-      if (seg.kind!=='path' || seg.id!==pathId) return seg;
-      const a = [...seg.anchors];
-      a.splice(Math.max(1, Math.min(index, a.length)), 0, pointId);
-      return { ...seg, anchors:a };
-    })
-  })),
 
   dumpJSON: () => {
     const s = get();
